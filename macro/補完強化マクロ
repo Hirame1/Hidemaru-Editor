@@ -1,0 +1,207 @@
+// 単語補完を少し強化するマクロ
+// by ヒラメ
+//
+// Version 0.01 2019/10/16 作成
+//
+// 使い方
+//  このマクロは編集後タイマーの自動実行に割り当てることを想定しています。
+//  秀丸エディタ標準の単語補完の直後に自動実行されることで、入力内容に応じた
+//  特別な処理を実行します。処理は制御コードによりコントロールします。
+//  
+//  対応している処理は、改行、カーソル位置指定、カラーマーカー指定、
+//  マクロをevalで実行、単語補完内容へのコメント記入、です。
+//
+// 辞書サンプル
+//  if(true){}else if(false){}else{}
+//  while(true){break;}
+//  コメントsamplemessage"メッセージ
+//
+// 改造等はご自由にどうぞ。
+//
+
+
+if((event == 5) && (geteventparam(2) == 1)){ //編集後タイマー＆単語補完の決定直後
+  
+  // 指定のファイルタイプでなければそこで終了する
+  if(currentconfigset != "秀丸マクロ"){
+    endmacro;
+  }
+  
+  $sa = char(0x01); // 改行する
+  $sb = char(0x02); // 改行する（自動インデント・アンインデント有効）
+  $sc = char(0x03); // カーソル位置の単語にカラーマーカーを設定する
+  $sd = char(0x04); // カーソル位置を指定する
+  $se = char(0x05); // カーソル位置の単語を指定する
+
+  $sx = char(0x18); // 囲った範囲をeval文でマクロ実行する（必ず２個セットで使用すること、複数回不可）
+  $sy = char(0x19); // 囲った範囲をコメント扱いにする（必ず２個セットで使用すること）
+  
+  
+  begingroupundo;
+  disabledraw;
+  
+  
+  
+  // コメントの処理 //
+  
+  while(true){
+    $line = gettext2(0, lineno, 9999, lineno, 1); // 行全文
+    
+    #n = strstr($line, $sy); // コメント指示を探す
+    
+    if(#n != -1){
+      #m = strstr($line, $sy, #n + 1); // 対のコメント指示を探す
+      
+      if(#m != -1){
+        moveto2 #n, lineno; // 見つかったコメント指示の位置に移動
+        beginsel; // 範囲選択開始
+        moveto2 #m + 1, lineno; // 対のコメント指示の位置に移動
+        endsel; delete; escape; // 削除
+      }else{
+        // 対のコメント指示が見つからない・・・
+        break;
+      }
+    }else{
+      break;
+    }
+  }
+  
+  
+  
+  // マクロ指示の処理 //
+  
+  $mac = ""; // マクロ指示内容
+  
+  while(true){
+    $line = gettext2(0, lineno, 9999, lineno, 1); // 行全文
+    
+    #n = strstr($line, $sx); // マクロ指示を探す
+    
+    if(#n != -1){
+      #m = strstr($line, $sx, #n + 1); // 対のマクロ指示を探す
+      
+      if(#m != -1){
+        $mac = gettext2(#n + 1, lineno, #m, lineno, 1);
+        
+        moveto2 #n, lineno; // 見つかったマクロ指示の位置に移動
+        beginsel; // 範囲選択開始
+        moveto2 #m + 1, lineno; // 対のマクロ指示の位置に移動
+        endsel; delete; escape; // 削除
+      }else{
+        // 対のマクロ指示が見つからない・・・
+        break;
+      }
+    }else{
+      break;
+    }
+  }
+  
+  
+  
+  // 改行の処理 //
+  
+  #count = 0; // 改行した回数カウント
+  
+  while(true){
+    $line = gettext2(0, lineno, 9999, lineno, 1); // 行全文
+    
+    #re = 0; // 0:インデント無効、1:インデント有効
+    
+    #n = strstr($line, $sa);
+    if(#n <= -1){
+      #n = strstr($line, $sb);
+      if(#n == -1){
+        break;
+      }
+      #re = 1; // 0:インデント無効、1:インデント有効
+    }
+    
+    moveto2 #n, lineno; // 見つかった改行指示の位置に移動
+    delete; // その改行指示文字を削除
+    
+    // 本物の改行を挿入
+    if(#re == 0){
+      insert "\n"; // 自動インデント無効
+    }else if(#re == 1){
+      insert "\n", 2; // 自動インデント有効
+    }
+    
+    #count = #count + 1;
+    
+    // 改行のすぐ後に "}" がある場合、入力しなおす（アンインデント用）
+    if(hex(unicode) == "7D"){ // "}"
+      delete; // 1文字削除
+      insert "}", 2; // } を挿入、アンインデント有効
+    }
+  }
+  
+  
+  
+  // カラーマーカーの処理 //
+  
+  #c = 0; // 上の処理で改行した行数分ループするための変数
+  #l = lineno; // lineno の値がおかしいケースがあるため保持しておく
+  
+  while(#c <= #count){
+    while(true){ // 行内に複数の指示があるケース用ループ
+      $line = gettext2(0, #l - #c, 9999, #l - #c, 1); // 行全文
+      #n = strstr($line, $sc);
+      if(#n <= -1){
+        break;
+      }
+      moveto2 #n, #l - #c;
+      delete;
+      selectword;
+      colormarker -1, 65280, 11, 2;
+      escape;
+    }
+    #c = #c + 1;
+  }
+  
+  
+  
+  // カーソル位置の処理 //
+  
+  #c = 0;
+  #l = lineno;
+  while(#c <= #count){
+    #d = 0;
+    
+    $line = gettext2(0, #l - #c, 9999, #l - #c, 1); // 行全文
+    
+    #n = strstr($line, $sd);
+    if(#n == -1){
+      #n = strstr($line, $se);
+      #d = 1;
+    }
+    
+    if(#n != -1){
+      moveto2 #n, #l - #c;
+      delete;
+      if(#d == 1){
+        selectword;
+      }
+      break;
+    }
+    #c = #c + 1;
+  }
+  
+  
+  
+  // 事前確認をした上で、指示されたマクロをevalにより実行する
+  
+  //if($mac != ""){
+  //  question "単語補完強化マクロにより以下のマクロが実行されます。よろしいですか？\n\n" + $mac;
+  //  if(result == yes){
+  //    eval $mac;
+  //  }
+  //}
+  // // 事前確認が不要であればこれだけにするといいです
+  eval $mac;
+  
+  
+  
+  enabledraw;
+  endgroupundo;
+  
+}
